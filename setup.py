@@ -3,14 +3,14 @@ import setuptools
 
 
 setuptools.setup(
-    name='pika-pool',
+    name='polaris-pika-pool',
     version=(
         re
         .compile(r".*__version__ = '(.*?)'", re.S)
         .match(open('pika_pool.py').read())
         .group(1)
     ),
-    url='https://github.com/bninja/pika-pool',
+    url='https://github.com/exathink/pika-pool',
     license='BSD',
     author='egon',
     author_email='egon@gb.com',
