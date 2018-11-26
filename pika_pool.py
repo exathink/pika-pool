@@ -151,8 +151,9 @@ class Connection(object):
         self.fairy = None
 
     def release(self):
-        self.pool.release(self.fairy)
-        self.fairy = None
+        if self.fairy:
+            self.pool.release(self.fairy)
+            self.fairy = None
 
     def __enter__(self):
         return self
@@ -189,6 +190,7 @@ class Pool(object):
         :param create: Callable creating a new connection.
         """
         self.create = create
+        self.is_shutdown = False
 
     def acquire(self, timeout=None):
         """
@@ -207,6 +209,13 @@ class Pool(object):
         Forcibly close a connection, suppressing any connection errors.
         """
         fairy.close()
+
+    def shutdown(self):
+        self._shutdown()
+        self.is_shutdown = True
+
+    def _shutdown(self):
+        raise NotImplementedError
 
     class Fairy(object):
         """
@@ -255,6 +264,8 @@ class Pool(object):
         All fairy creates go through here.
         """
         return self.Fairy(self.create())
+
+
 
 
 class NullPool(Pool):
@@ -337,10 +348,13 @@ class QueuedPool(Pool):
         return self.Connection(self, fairy)
 
     def release(self, fairy):
-        fairy.released_at = time.time()
-        try:
-            self._queue.put_nowait(fairy)
-        except queue.Full:
+        if not self.is_shutdown:
+            fairy.released_at = time.time()
+            try:
+                self._queue.put_nowait(fairy)
+            except queue.Full:
+                self.close(fairy)
+        else:
             self.close(fairy)
 
     def close(self, fairy):
@@ -362,6 +376,17 @@ class QueuedPool(Pool):
             with self._avail_lock:
                 self._avail += 1
             raise
+
+    def _shutdown(self):
+        try:
+            fairy = self._queue.get_nowait()
+            while fairy:
+                fairy.close()
+                fairy = self._queue.get_nowait()
+
+        except queue.Empty:
+            pass
+
 
     class Fairy(Pool.Fairy):
 
@@ -386,3 +411,4 @@ class QueuedPool(Pool):
         if not self.recycle:
             return False
         return (time.time() - fairy.created_at) > self.recycle
+
